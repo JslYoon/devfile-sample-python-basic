@@ -1,0 +1,82 @@
+name: Validate with Devfile Registry Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  validate-devfile:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout current repo
+      uses: actions/checkout@v4
+      with:
+        path: current-repo
+
+    - name: Checkout devfile registry
+      uses: actions/checkout@v4
+      with:
+        repository: devfile/registry
+        path: registry
+
+    - name: Setup test environment with overrides
+      run: |
+        cp -r registry/tests registry-tests-base
+        
+        if [ -d "current-repo/tests" ]; then
+          echo "Found local test overrides, applying them..."
+          cp -r current-repo/tests/* registry-tests-base/ 2>/dev/null || true
+        fi
+        
+        mkdir -p registry/stacks/current-sample
+        cp current-repo/devfile.yaml registry/stacks/current-sample/
+        cp -r registry-tests-base/* registry/tests/
+
+    - name: Setup Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+
+    - name: Install dependencies
+      run: |
+        sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+        sudo chmod +x /usr/local/bin/yq
+        go install github.com/onsi/ginkgo/v2/ginkgo@latest
+
+    - name: Setup Minikube
+      uses: medyagh/setup-minikube@master
+      with:
+        minikube-version: latest
+        kubernetes-version: v1.28.0
+
+    - name: Run Registry Validation Tests
+      working-directory: registry
+      run: |
+        cd tests/check_non_terminating
+        go build -o flatten-parent .
+        cd ../..
+        
+        export STACKS="current-sample"
+        export TEST_NAMESPACE="default"
+        export YQ_PATH="yq"
+        export ENV="minikube"
+        
+        echo "Running validation tests for current sample..."
+        
+        echo "=== Schema Validation ==="
+        cd tests
+        bash validate_devfile_schemas.sh
+        
+        echo "=== Non-terminating Test ==="
+        bash check_non_terminating.sh
+        
+        echo "All tests completed successfully!"
+
+    - name: Cleanup
+      if: always()
+      run: |
+        kubectl delete pods --all -n default --ignore-not-found=true || true 

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "enabledManagers": ["pip_requirements"],
+  "pip_requirements": {
+    "fileMatch": ["requirements\\.txt$"]
+  },
+  "packageRules": [
+    {
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python dependencies",
+      "groupSlug": "python-deps",
+      "commitMessageTopic": "Python {{depName}}"
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true
+  }
+}
